@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ленинградский андеграунд — карта 1980–2000-х</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface2: #1e1e1e;
+  --border: #2a2a2a;
+  --text: #e8e4de;
+  --text-dim: #8a8580;
+  --red: #c43e3e;
+  --red-bright: #e85454;
+  --blue: #4a7fb5;
+  --blue-bright: #6ba3de;
+  --gold: #c9a84c;
+  --green: #5a9a6a;
+  --magenta: #a855a0;
+}
+html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'Source Sans 3',sans-serif; }
+#app { display:flex; height:100%; position:relative; }
+
+/* --- MAP --- */
+#map { flex:1; z-index:1; }
+.leaflet-container { background:var(--bg)!important; }
+.leaflet-control-zoom { border:1px solid var(--border)!important; }
+.leaflet-control-zoom a { background:var(--surface)!important; color:var(--text)!important; border-color:var(--border)!important; }
+.leaflet-control-zoom a:hover { background:var(--surface2)!important; }
+.leaflet-control-attribution { background:rgba(10,10,10,.85)!important; color:var(--text-dim)!important; font-size:10px!important; }
+.leaflet-control-attribution a { color:var(--text-dim)!important; }
+
+/* --- HEADER --- */
+#header {
+  position:absolute; top:0; left:0; right:0; z-index:1000;
+  background:linear-gradient(180deg, rgba(10,10,10,.95) 0%, rgba(10,10,10,.7) 80%, transparent 100%);
+  padding:12px 16px 24px;
+  pointer-events:none;
+}
+#header > * { pointer-events:auto; }
+#header h1 {
+  font-family:'Playfair Display',serif; font-weight:900; font-size:20px;
+  letter-spacing:-.02em; line-height:1.15;
+  background:linear-gradient(135deg, var(--text) 40%, var(--gold) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+#header .sub {
+  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim);
+  letter-spacing:.08em; text-transform:uppercase; margin-top:2px;
+}
+
+/* --- FILTER BAR --- */
+#filters {
+  position:absolute; top:70px; left:12px; right:12px; z-index:1000;
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+.filter-btn {
+  display:flex; align-items:center; gap:5px;
+  padding:6px 10px; border-radius:20px;
+  border:1px solid var(--border); background:rgba(20,20,20,.9);
+  color:var(--text-dim); font-size:11px; font-family:'JetBrains Mono',monospace;
+  cursor:pointer; transition:all .2s; white-space:nowrap;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.filter-btn .dot {
+  width:8px; height:8px; border-radius:50%; flex-shrink:0;
+}
+.filter-btn.active { color:var(--text); border-color:rgba(255,255,255,.25); background:rgba(30,30,30,.95); }
+.filter-btn.active .dot { box-shadow:0 0 6px currentColor; }
+
+/* --- ERA TABS --- */
+#era-bar {
+  position:absolute; bottom:80px; left:12px; right:12px; z-index:1000;
+  display:flex; gap:4px; justify-content:center;
+}
+.era-btn {
+  padding:7px 14px; border-radius:18px;
+  border:1px solid var(--border); background:rgba(20,20,20,.9);
+  color:var(--text-dim); font-size:12px; font-family:'JetBrains Mono',monospace;
+  cursor:pointer; transition:all .2s;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.era-btn.active { background:var(--red); border-color:var(--red); color:#fff; }
+
+/* --- STATS --- */
+#stats {
+  position:absolute; bottom:44px; left:0; right:0; z-index:1000;
+  text-align:center;
+  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim);
+  letter-spacing:.05em; pointer-events:none;
+}
+
+/* --- CARD (bottom sheet on mobile) --- */
+#card-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,.5); z-index:2000;
+}
+#card-overlay.open { display:block; }
+#card {
+  position:fixed; bottom:0; left:0; right:0; z-index:2001;
+  background:var(--surface); border-top:2px solid var(--border);
+  border-radius:16px 16px 0 0;
+  max-height:70vh; overflow-y:auto;
+  transform:translateY(100%); transition:transform .3s cubic-bezier(.32,.72,.24,1);
+  padding:0 16px 24px;
+}
+#card.open { transform:translateY(0); }
+#card .handle {
+  width:36px; height:4px; background:var(--border); border-radius:2px;
+  margin:10px auto 14px;
+}
+#card .card-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+  margin-bottom:10px;
+}
+#card .card-title {
+  font-family:'Playfair Display',serif; font-weight:700; font-size:20px;
+  line-height:1.2;
+}
+#card .card-badge {
+  flex-shrink:0; padding:3px 8px; border-radius:4px;
+  font-family:'JetBrains Mono',monospace; font-size:9px; text-transform:uppercase;
+  letter-spacing:.05em; border:1px solid;
+}
+#card .card-addr {
+  font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+  margin-bottom:8px;
+}
+#card .card-years {
+  display:inline-block; padding:2px 8px; border-radius:3px;
+  background:var(--surface2); border:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--gold);
+  margin-bottom:10px;
+}
+#card .card-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
+#card .card-tag {
+  padding:2px 8px; border-radius:3px; background:var(--surface2);
+  font-size:11px; color:var(--text-dim); border:1px solid var(--border);
+}
+#card .card-text { font-size:14px; line-height:1.55; color:var(--text); }
+#card .card-text p { margin-bottom:8px; }
+#card .card-status {
+  display:flex; align-items:center; gap:6px; margin-top:10px; padding-top:10px;
+  border-top:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+}
+#card .status-dot { width:8px; height:8px; border-radius:50%; }
+#card .card-bands {
+  margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+}
+#card .card-bands-label {
+  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim);
+  text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px;
+}
+#card .card-bands-list { display:flex; flex-wrap:wrap; gap:4px; }
+#card .band-chip {
+  padding:3px 8px; border-radius:12px;
+  background:rgba(200,168,76,.1); border:1px solid rgba(200,168,76,.25);
+  font-size:11px; color:var(--gold);
+}
+#card .close-btn {
+  position:absolute; top:12px; right:16px; width:28px; height:28px;
+  border-radius:50%; border:1px solid var(--border); background:var(--surface2);
+  color:var(--text-dim); font-size:16px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* --- MARKER STYLES --- */
+.marker-icon {
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; border:2px solid; font-weight:700;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  transition:transform .2s;
+}
+.marker-icon:hover { transform:scale(1.25); }
+
+/* --- DESKTOP --- */
+@media (min-width:768px) {
+  #header { left:0; right:auto; padding:20px 24px 28px; }
+  #header h1 { font-size:26px; }
+  #filters { top:85px; left:16px; right:auto; max-width:420px; }
+  #era-bar { bottom:24px; left:auto; right:auto; }
+  #stats { bottom:8px; }
+  #card {
+    position:fixed; left:auto; right:16px; bottom:16px; top:auto;
+    width:380px; max-height:calc(100vh - 32px);
+    border-radius:12px; border:1px solid var(--border);
+    transform:translateX(120%);
+  }
+  #card.open { transform:translateX(0); }
+  #card-overlay { display:none!important; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="header">
+    <h1>Ленинградский андеграунд</h1>
+    <div class="sub">Культурная география / 1980–2000-е</div>
+  </div>
+  <div id="filters"></div>
+  <div id="era-bar"></div>
+  <div id="stats"></div>
+  <div id="card-overlay" onclick="closeCard()"></div>
+  <div id="card">
+    <div class="handle"></div>
+    <button class="close-btn" onclick="closeCard()">&times;</button>
+    <div id="card-content"></div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+const CATEGORIES = {
+  rock:     { label:'Рок 80-х',       color:'#c43e3e', dot:'#c43e3e' },
+  club:     { label:'Клубы 90-2000-х', color:'#4a7fb5', dot:'#4a7fb5' },
+  inst:     { label:'Институции',      color:'#5a9a6a', dot:'#5a9a6a' },
+  address:  { label:'Адреса',          color:'#c9a84c', dot:'#c9a84c' },
+  gather:   { label:'Точки сбора',     color:'#a855a0', dot:'#a855a0' },
+};
+
+const ERAS = [
+  { id:'all', label:'Все эпохи' },
+  { id:'80',  label:'1980-е' },
+  { id:'90',  label:'1990-е' },
+  { id:'00',  label:'2000-е' },
+];
+
+const LOCATIONS = [
+  {
+    id:1, name:'Ленинградский рок-клуб',
+    addr:'ул. Рубинштейна, 13', lat:59.9302, lng:30.3447,
+    cat:'rock', years:'1981–1991', era:['80','90'],
+    tags:['Рок-клуб','Концерты','Легенда'],
+    status:'preserved', statusText:'Здание сохранилось, мемориальная доска',
+    bands:['Аквариум','Кино','ДДТ','Зоопарк','Алиса','Аукцыон','Ноль','Странные игры','Телевизор'],
+    text:'Центр всей ленинградской рок-сцены 80-х. Официально зарегистрированный клуб, ставший легальным прикрытием для андеграундных концертов. Здесь прошли первые выступления практически всех ключевых групп эпохи. Ежегодные рок-фестивали собирали тысячи зрителей.'
+  },
+  {
+    id:2, name:'Кафе «Сайгон»',
+    addr:'Невский пр., 49 / Владимирский пр., 2', lat:59.9314, lng:30.3468,
+    cat:'gather', years:'1964–1989', era:['80'],
+    tags:['Кафе','Точка сбора','Культовое место'],
+    status:'demolished', statusText:'Снесено, на месте — ресторан',
+    bands:['Аквариум','Кино','Зоопарк'],
+    text:'Культовое кафетерий на углу Невского и Владимирского. Место встреч музыкантов, поэтов, художников с 60-х годов. «Сайгон» — неофициальное название, данное завсегдатаями. Именно здесь формировались связи, определившие облик ленинградского андеграунда.'
+  },
+  {
+    id:3, name:'Арт-центр «Пушкинская, 10»',
+    addr:'Пушкинская ул., 10 / Лиговский пр., 53', lat:59.9258, lng:30.3588,
+    cat:'inst', years:'1989–н.в.', era:['80','90','00'],
+    tags:['Институция','Сквот','Арт-центр','Fish Fabrique'],
+    status:'active', statusText:'Действует как арт-центр, музеи, галереи',
+    bands:['Аквариум','ДДТ','Аукцыон','НОМ'],
+    text:'Бывший сквот, ставший легальным арт-центром. Здесь расположен Музей Нонконформистского Искусства, Музей Звука, галереи. В здании работает легендарный клуб Fish Fabrique — одна из старейших действующих рок-площадок города. Партнер проекта — их «Карта звуков Петербурга» становится нашим современным продолжением.'
+  },
+  {
+    id:4, name:'Клуб TaMtAm',
+    addr:'Малый пр. В.О., 49', lat:59.9437, lng:30.2778,
+    cat:'club', years:'1991–1996', era:['90'],
+    tags:['Клуб','Альтернатива','Утрачено'],
+    status:'demolished', statusText:'Утрачен, здание перепрофилировано',
+    bands:['Tequilajazzz','Король и Шут','Ночные снайперы','Химера','Deadушки'],
+    text:'Первый альтернативный клуб Петербурга, основанный Всеволодом Гаккелем (экс-«Аквариум»). Точка перехода от рок-клубовской культуры к клубной. Здесь начинали Tequilajazzz, Король и Шут, Ночные снайперы. На сцене играли хардкор, панк, нойз — все, что не вписывалось в мейнстрим.'
+  },
+  {
+    id:5, name:'Котельная «Камчатка»',
+    addr:'ул. Блохина, 15', lat:59.9533, lng:30.2955,
+    cat:'rock', years:'1986–н.в.', era:['80','90','00'],
+    tags:['Котельная','Музей','Цой','Башлачёв'],
+    status:'active', statusText:'Клуб-музей «Камчатка», действует',
+    bands:['Кино','Алиса'],
+    text:'Котельная, где работали кочегарами Виктор Цой, Александр Башлачёв, Святослав Задерий. Место стало символом андеграундного быта: музыканты топили котлы ночью, днем писали песни. Сейчас — клуб-музей с концертами и выставками.'
+  },
+  {
+    id:6, name:'Квартира Олега Гаркуши',
+    addr:'Средний пр. В.О., 92, кв. 106', lat:59.9395, lng:30.2630,
+    cat:'address', years:'1980-е–1990-е', era:['80','90'],
+    tags:['Квартира','Квартирник','Аукцыон'],
+    status:'preserved', statusText:'Жилой дом, сохранился',
+    bands:['Аукцыон','Аквариум'],
+    text:'Квартира Олега Гаркуши, фронтмена «Аукцыона». Здесь бывали Гребенщиков и другие музыканты сцены. Дом стоит прямо напротив нынешнего Центра Курёхина — символическая рифма: частное пространство андеграунда и его институциональное продолжение через дорогу.'
+  },
+  {
+    id:7, name:'Центр Курёхина',
+    addr:'Средний пр. В.О., 93А', lat:59.9396, lng:30.2620,
+    cat:'inst', years:'2004–н.в.', era:['00'],
+    tags:['Институция','Курёхин','SKIF','Поп-механика'],
+    status:'active', statusText:'Новое здание после 10 лет реконструкции',
+    bands:['Поп-механика','Курёхин'],
+    text:'Центр современного искусства имени Сергея Курёхина. Основной КИ-партнер проекта. Хранит архив «Поп-механики», проводит фестиваль SKIF. На этом месте ранее располагался кинотеатр «Прибой», пространство которого Курёхин использовал для перформансов. Новое здание открылось после масштабной реконструкции.'
+  },
+  {
+    id:8, name:'«Эльфийский садик»',
+    addr:'Дмитровский сквер, у Пяти углов', lat:59.9285, lng:30.3505,
+    cat:'gather', years:'1970-е–1980-е', era:['80'],
+    tags:['Сквер','Тусовка','Точка сбора'],
+    status:'preserved', statusText:'Сквер сохранился',
+    bands:['Аквариум','Зоопарк'],
+    text:'Небольшой сквер, ставший местом тусовки рокеров, хиппи и неформалов 70–80-х годов. Отсюда расходились на квартирники и подпольные концерты. Название — от увлечения Толкиеном, характерного для субкультуры тех лет.'
+  },
+  {
+    id:9, name:'Клуб «Тоннель»',
+    addr:'Конногвардейский бульвар / наб. канала Грибоедова', lat:59.9310, lng:30.2905,
+    cat:'club', years:'1993–2003', era:['90','00'],
+    tags:['Клуб','Техно','Рейв','Утрачено'],
+    status:'demolished', statusText:'Закрыт, помещение утрачено',
+    bands:[],
+    text:'Первый настоящий рейв-клуб Петербурга. Подвальное помещение, ставшее эпицентром электронной сцены 90-х. Сюда привозили западных диджеев, здесь формировалась техно-культура города. Клуб закрылся в начале 2000-х, но его влияние на клубную карту Петербурга — определяющее.'
+  },
+  {
+    id:10, name:'Клуб «Молоко»',
+    addr:'Перекупной пер., 12', lat:59.9350, lng:30.3710,
+    cat:'club', years:'1997–2007', era:['90','00'],
+    tags:['Клуб','Панк','Хардкор','Утрачено'],
+    status:'demolished', statusText:'Закрыт',
+    bands:['Король и Шут','Tequilajazzz','Пилот','Порнофильмы'],
+    text:'Один из главных андеграундных клубов рубежа веков. Маленький подвал, ставший домашней сценой для панк-рока и хардкора. Здесь играли Король и Шут, когда уже стали стадионной группой — возвращались на камерную площадку. Закрытие «Молока» в 2007 стало символом конца эпохи.'
+  },
+  {
+    id:11, name:'Клуб «Грибоедов»',
+    addr:'Воронежская ул., 2А', lat:59.9218, lng:30.3530,
+    cat:'club', years:'1996–н.в.', era:['90','00'],
+    tags:['Клуб','Джаз','Рок','Электроника'],
+    status:'active', statusText:'Действует',
+    bands:['Markscheider Kunst','Billy\'s Band','Tequilajazzz'],
+    text:'Клуб в бывшем бомбоубежище. Одна из немногих площадок 90-х, дожившая до наших дней. Круглый подземный зал с уникальной акустикой. Программа всегда была эклектичной: от джаза и регги до электроники и панка.'
+  },
+  {
+    id:12, name:'Red Club',
+    addr:'Полтавская ул., 7', lat:59.9325, lng:30.3730,
+    cat:'club', years:'1999–2012', era:['90','00'],
+    tags:['Клуб','Рок','Метал','Утрачено'],
+    status:'demolished', statusText:'Закрыт, снесён',
+    bands:['Король и Шут','Алиса','Ленинград','Tequilajazzz','Пилот'],
+    text:'Крупнейший рок-клуб Петербурга на рубеже тысячелетий. Вмещал до 1500 человек. Здесь проходили главные концерты альтернативной сцены 2000-х. Закрытие Red Club в 2012 году стало событием — город потерял уникальную площадку.'
+  },
+  {
+    id:13, name:'Fish Fabrique',
+    addr:'Лиговский пр., 53 (Пушкинская, 10)', lat:59.9262, lng:30.3582,
+    cat:'club', years:'1993–н.в.', era:['90','00'],
+    tags:['Клуб','Рок','Инди','Действует'],
+    status:'active', statusText:'Действует в составе Пушкинской 10',
+    bands:['Markscheider Kunst','Tequilajazzz','НОМ','Ленинград'],
+    text:'Один из старейших непрерывно работающих рок-клубов Петербурга. Расположен внутри арт-центра «Пушкинская, 10». Камерная площадка с аутентичной атмосферой подвального клуба — живое продолжение традиции.'
+  },
+  {
+    id:14, name:'ДК Ленсовета',
+    addr:'Каменноостровский пр., 42', lat:59.9668, lng:30.3130,
+    cat:'rock', years:'1980-е', era:['80'],
+    tags:['Концертный зал','Рок-фестивали'],
+    status:'preserved', statusText:'Действует как концертная площадка',
+    bands:['Аквариум','Кино','ДДТ','Алиса','Зоопарк'],
+    text:'Один из немногих официальных залов, где разрешали проводить рок-концерты в 80-х. Здесь проходили легендарные фестивали Ленинградского рок-клуба, собиравшие тысячи зрителей. Зал на 1600 мест — контраст с подвалами и квартирами, где обычно играли те же группы.'
+  },
+  {
+    id:15, name:'«Манхэттен»',
+    addr:'наб. реки Фонтанки, 90', lat:59.9247, lng:30.3340,
+    cat:'club', years:'1996–2005', era:['90','00'],
+    tags:['Клуб','Электроника','Утрачено'],
+    status:'demolished', statusText:'Закрыт',
+    bands:[],
+    text:'Клуб электронной музыки на Фонтанке. Альтернатива «Тоннелю» для тех, кто искал более рафинированную клубную атмосферу. Здесь играли хаус и техно, приезжали европейские диджеи.'
+  },
+  {
+    id:16, name:'Площадь Мира / Сенная',
+    addr:'Сенная площадь', lat:59.9270, lng:30.3197,
+    cat:'gather', years:'1970-е–1990-е', era:['80','90'],
+    tags:['Точка сбора','Дистрибуция','Рынок'],
+    status:'preserved', statusText:'Площадь сохранилась, облик изменился',
+    bands:[],
+    text:'Место стихийной торговли кассетами, пластинками и самиздатом. Здесь можно было купить бутлеги западных групп и записи ленинградских музыкантов. Точка дистрибуции, формировавшая вкусы комьюнити до эпохи интернета.'
+  },
+  {
+    id:17, name:'Студия «АнТроп»',
+    addr:'разные адреса', lat:59.9380, lng:30.3150,
+    cat:'rock', years:'1986–1990-е', era:['80','90'],
+    tags:['Студия','Запись','АнТроп'],
+    status:'demolished', statusText:'Студия не сохранилась',
+    bands:['Аквариум','Кино','Аукцыон','Странные игры'],
+    text:'Подпольная студия Андрея Тропилло — «ленинградский Сан Филлипс». Здесь были записаны ключевые альбомы ленинградского рока: «Табу» и «Радио Африка» Аквариума, «45» и «46» Кино. Тропилло записывал на государственном оборудовании тайком, создав фонотеку целой эпохи.'
+  },
+  {
+    id:18, name:'Квартира Бориса Гребенщикова',
+    addr:'ул. Софьи Перовской (Малая Конюшенная)', lat:59.9365, lng:30.3260,
+    cat:'address', years:'1970-е–1980-е', era:['80'],
+    tags:['Квартира','Квартирник','Аквариум'],
+    status:'preserved', statusText:'Жилой дом',
+    bands:['Аквариум'],
+    text:'Одна из квартир БГ, где проходили легендарные квартирники «Аквариума» в конце 70-х — начале 80-х. Формат квартирника — акустический концерт в частном пространстве — стал визитной карточкой ленинградского андеграунда, способом обойти цензуру.'
+  },
+  {
+    id:19, name:'Клуб «Космонавт»',
+    addr:'Бронницкая ул., 24', lat:59.9155, lng:30.3230,
+    cat:'club', years:'2010–н.в.', era:['00'],
+    tags:['Клуб','Концерты','Действует'],
+    status:'active', statusText:'Действует',
+    bands:[],
+    text:'Одна из крупных концертных площадок нового поколения. Наследник традиции Red Club по вместимости и формату. Хотя «Космонавт» — продукт уже другой эпохи, он продолжает линию живой музыки в городе.'
+  },
+  {
+    id:20, name:'Кинотеатр «Прибой» (старый Центр Курёхина)',
+    addr:'Средний пр. В.О., 93', lat:59.9398, lng:30.2625,
+    cat:'rock', years:'1980-е–1990-е', era:['80','90'],
+    tags:['Кинотеатр','Поп-механика','Перформанс'],
+    status:'demolished', statusText:'Снесён, на месте — новый Центр Курёхина',
+    bands:['Поп-механика','Курёхин'],
+    text:'Кинотеатр «Прибой» — место, где Курёхин проводил свои безумные перформансы «Поп-механики»: оркестры, танцоры, животные, взрывы на сцене. Здание было снесено, на его месте построен новый Центр Курёхина. Физическая метаморфоза: от разрушения к институциализации.'
+  },
+  {
+    id:21, name:'Клуб «Платформа» / «Орландина»',
+    addr:'ул. Рубинштейна, 2', lat:59.9313, lng:30.3435,
+    cat:'club', years:'1990-е–2000-е', era:['90','00'],
+    tags:['Клуб','Рок','Инди'],
+    status:'demolished', statusText:'Закрыт',
+    bands:['Сплин','Ленинград','Billy\'s Band'],
+    text:'Клуб на Рубинштейна — улице, ставшей синонимом ночной жизни Петербурга. Здесь в разные годы работали разные форматы: от рок-клуба до бара с живой музыкой. Сплин и Ленинград начинали именно на таких маленьких площадках.'
+  },
+  {
+    id:22, name:'Галерея «Борей»',
+    addr:'Литейный пр., 58', lat:59.9370, lng:30.3490,
+    cat:'inst', years:'1991–н.в.', era:['90','00'],
+    tags:['Галерея','Арт','Институция'],
+    status:'active', statusText:'Действует',
+    bands:[],
+    text:'Одна из первых независимых галерей Петербурга. Не только визуальное искусство — здесь проходили поэтические вечера, акустические концерты, презентации самиздата. Место пересечения музыкальной и художественной сцен.'
+  },
+];
+
+// ===== STATE =====
+let activeCategories = new Set(Object.keys(CATEGORIES));
+let activeEra = 'all';
+let markers = [];
+let map;
+
+// ===== INIT MAP =====
+function initMap() {
+  map = L.map('map', {
+    center:[59.935, 30.325],
+    zoom:13,
+    zoomControl:true,
+    attributionControl:true,
+  });
+
+  // Dark tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    subdomains:'abcd',
+    maxZoom:19,
+  }).addTo(map);
+
+  renderMarkers();
+}
+
+// ===== MARKERS =====
+function createMarkerIcon(cat) {
+  const c = CATEGORIES[cat];
+  const div = document.createElement('div');
+  div.className = 'marker-icon';
+  div.style.width = '18px';
+  div.style.height = '18px';
+  div.style.backgroundColor = c.color;
+  div.style.borderColor = c.color;
+  div.style.opacity = '0.9';
+  return L.divIcon({
+    html: div.outerHTML,
+    className:'',
+    iconSize:[18,18],
+    iconAnchor:[9,9],
+  });
+}
+
+function renderMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  const visible = LOCATIONS.filter(loc => {
+    if (!activeCategories.has(loc.cat)) return false;
+    if (activeEra !== 'all' && !loc.era.includes(activeEra)) return false;
+    return true;
+  });
+
+  visible.forEach(loc => {
+    const m = L.marker([loc.lat, loc.lng], { icon:createMarkerIcon(loc.cat) })
+      .addTo(map)
+      .on('click', () => openCard(loc));
+    markers.push(m);
+  });
+
+  document.getElementById('stats').textContent =
+    `${visible.length} из ${LOCATIONS.length} точек на карте`;
+}
+
+// ===== CARD =====
+function openCard(loc) {
+  const c = CATEGORIES[loc.cat];
+  const statusColors = {
+    active:'var(--green)', preserved:'var(--gold)',
+    demolished:'var(--red)', unknown:'var(--text-dim)',
+  };
+  const statusLabels = {
+    active:'Действует', preserved:'Сохранилось',
+    demolished:'Утрачено', unknown:'Неизвестно',
+  };
+
+  let html = `
+    <div class="card-head">
+      <div class="card-title">${loc.name}</div>
+      <div class="card-badge" style="color:${c.color};border-color:${c.color}">${c.label}</div>
+    </div>
+    <div class="card-addr">${loc.addr}</div>
+    <div class="card-years">${loc.years}</div>
+    <div class="card-tags">${loc.tags.map(t => `<span class="card-tag">${t}</span>`).join('')}</div>
+    <div class="card-text"><p>${loc.text}</p></div>
+  `;
+
+  if (loc.bands && loc.bands.length) {
+    html += `
+      <div class="card-bands">
+        <div class="card-bands-label">Связанные артисты</div>
+        <div class="card-bands-list">${loc.bands.map(b => `<span class="band-chip">${b}</span>`).join('')}</div>
+      </div>
+    `;
+  }
+
+  html += `
+    <div class="card-status">
+      <span class="status-dot" style="background:${statusColors[loc.status]||statusColors.unknown}"></span>
+      ${loc.statusText || statusLabels[loc.status] || ''}
+    </div>
+  `;
+
+  document.getElementById('card-content').innerHTML = html;
+  document.getElementById('card').classList.add('open');
+  document.getElementById('card-overlay').classList.add('open');
+
+  map.flyTo([loc.lat, loc.lng], 15, { duration:.5 });
+}
+
+function closeCard() {
+  document.getElementById('card').classList.remove('open');
+  document.getElementById('card-overlay').classList.remove('open');
+}
+
+// ===== FILTERS =====
+function renderFilters() {
+  const el = document.getElementById('filters');
+  el.innerHTML = '';
+  Object.entries(CATEGORIES).forEach(([key, cat]) => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (activeCategories.has(key) ? ' active' : '');
+    btn.innerHTML = `<span class="dot" style="background:${cat.dot}"></span>${cat.label}`;
+    btn.addEventListener('click', () => {
+      if (activeCategories.has(key)) activeCategories.delete(key);
+      else activeCategories.add(key);
+      renderFilters();
+      renderMarkers();
+    });
+    el.appendChild(btn);
+  });
+}
+
+function renderEras() {
+  const el = document.getElementById('era-bar');
+  el.innerHTML = '';
+  ERAS.forEach(era => {
+    const btn = document.createElement('button');
+    btn.className = 'era-btn' + (activeEra === era.id ? ' active' : '');
+    btn.textContent = era.label;
+    btn.addEventListener('click', () => {
+      activeEra = era.id;
+      renderEras();
+      renderMarkers();
+      closeCard();
+    });
+    el.appendChild(btn);
+  });
+}
+
+// ===== BOOT =====
+initMap();
+renderFilters();
+renderEras();
+</script>
+</body>
+</html>
